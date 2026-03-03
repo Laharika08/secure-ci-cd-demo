@@ -1,0 +1,77 @@
+## Kubernetes deployment and service for the FastAPI Secure Build Info API
+#
+# This manifest deploys two replicas of the service behind a ClusterIP service.
+# The container image value is parameterized; replace `ghcr.io/REPO/wiki-service-k8s:main`
+# with the fully qualified name of the signed image published by your GitHub
+# Actions pipeline.  The deployment defines resource requests/limits and
+# readiness/liveness probes.  A service of type ClusterIP exposes the
+# deployment within the cluster.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiki-service
+  labels:
+    app: wiki-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wiki-service
+  template:
+    metadata:
+      labels:
+        app: wiki-service
+    spec:
+      containers:
+        - name: wiki-service
+          image: ghcr.io/REPO/wiki-service-k8s:main  # Replace with your signed image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: APP_VERSION
+              value: "1.0.0"
+            - name: BUILD_ID
+              value: "{{CI_COMMIT_SHA}}"
+            - name: DEPLOYMENT_ENV
+              value: "production"
+            - name: SECURITY_STATUS
+              value: "pass"
+            - name: BUILD_TIMESTAMP
+              value: "{{CI_BUILD_TIME}}"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiki-service
+  labels:
+    app: wiki-service
+spec:
+  type: ClusterIP
+  selector:
+    app: wiki-service
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+      name: http
